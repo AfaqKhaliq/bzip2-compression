@@ -1,0 +1,30 @@
+CC      = gcc
+CFLAGS  = -Wall -Wextra -O2 -Iinclude
+TARGET  = bzip2_stage1
+SRCDIR  = src
+SOURCES = $(SRCDIR)/main.c \
+          $(SRCDIR)/config.c \
+          $(SRCDIR)/block.c \
+          $(SRCDIR)/rle.c \
+          $(SRCDIR)/bwt.c
+
+OBJECTS = $(SOURCES:.c=.o)
+
+# ── Default target (Linux) ──────────────────────────────────────────────
+all: $(TARGET)
+
+$(TARGET): $(OBJECTS)
+	$(CC) $(CFLAGS) -o $@ $^
+
+$(SRCDIR)/%.o: $(SRCDIR)/%.c
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+# ── Windows cross-compile ───────────────────────────────────────────────
+windows:
+	$(MAKE) CC=x86_64-w64-mingw32-gcc TARGET=$(TARGET).exe
+
+# ── Utility targets ─────────────────────────────────────────────────────
+clean:
+	rm -f $(OBJECTS) $(TARGET) $(TARGET).exe
+
+.PHONY: all windows clean
