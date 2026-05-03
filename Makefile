@@ -6,7 +6,10 @@ SOURCES = $(SRCDIR)/main.c \
           $(SRCDIR)/config.c \
           $(SRCDIR)/block.c \
           $(SRCDIR)/rle.c \
-          $(SRCDIR)/bwt.c
+		  $(SRCDIR)/bwt.c \
+		  $(SRCDIR)/mtf.c \
+		  $(SRCDIR)/rle2.c \
+		  $(SRCDIR)/huffman.c
 
 OBJECTS = $(SOURCES:.c=.o)
 
@@ -25,6 +28,8 @@ windows:
 
 # ── Utility targets ─────────────────────────────────────────────────────
 clean:
-	rm -f $(OBJECTS) $(TARGET) $(TARGET).exe
+	if exist $(SRCDIR)\*.o del /q $(SRCDIR)\*.o
+	if exist $(TARGET) del /q $(TARGET)
+	if exist $(TARGET).exe del /q $(TARGET).exe
 
 .PHONY: all windows clean

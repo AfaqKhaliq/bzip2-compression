@@ -1,18 +1,18 @@
-# BZip2 Compression - Stage 1 Implementation
+# BZip2 Compression - Stages 1-3 Implementation
 
 ## Project Overview
 
-This is **Stage 1** of a three-stage implementation of the BZip2 compression algorithm. Stage 1 focuses on the foundational components: **Block Division**, **RLE-1 Encoding**, and the **Burrows-Wheeler Transform (BWT)**.
+This is a complete three-stage implementation of a BZip2-like compression pipeline. It includes **Block Division**, **RLE-1**, **BWT**, **MTF**, **RLE-2**, and **Canonical Huffman Coding**.
 
 ### Project Timeline
 
 - **Stage 1** (1.5 Weeks): Block division, RLE-1, BWT - **✓ COMPLETED**
-- **Stage 2** (6 Days): Move-to-Front (MTF), RLE-2
-- **Stage 3** (1 Week): Huffman Coding
+- **Stage 2** (6 Days): Move-to-Front (MTF), RLE-2 - **✓ COMPLETED**
+- **Stage 3** (1 Week): Huffman Coding - **✓ COMPLETED**
 
 ---
 
-## Stage 1: Architecture & Components
+## Architecture & Components
 
 ### 1. Block Division
 
@@ -106,7 +106,36 @@ Output: [3, ANNBAA]  (primary_index=3, BWT data="ANNBAA")
 - Output is perfectly reversible with primary_index
 - Dramatically improves compressibility when combined with RLE
 
-### 4. Full Stage 1 Pipeline
+### 4. Stage 2: Move-to-Front (MTF)
+
+**Purpose:** Convert repeated symbols into small indices for better compression.
+
+**Algorithm:**
+
+- Initialize a list of symbols [0..255]
+- For each input byte, output its index and move it to the front
+- Produces many small numbers after BWT
+
+### 5. Stage 2: RLE-2 (Zero-Run Encoding)
+
+**Purpose:** Compress long runs of zeros in MTF output.
+
+**Algorithm:**
+
+- Uses 0x00 as a run marker followed by a 1-255 count
+- Non-zero values are emitted as-is
+
+### 6. Stage 3: Canonical Huffman Coding
+
+**Purpose:** Entropy-code the RLE-2 output using canonical Huffman codes.
+
+**Implementation details:**
+
+- Builds frequency table for 256 symbols
+- Generates canonical codes from code lengths
+- Stores only code lengths in the header
+
+### 7. Full Pipeline
 
 ```
 Input File
@@ -114,15 +143,21 @@ Input File
 [Block Division]
     ↓
 For each block:
-    ├─ [RLE-1 Encode] (if enabled)
-    │   ├─ Compress runs of 4+ bytes
-    │   └─ Output has up to 25% overhead
-    │
-    └─ [BWT Transform]
-        ├─ Create cyclic rotations
-        ├─ Sort lexicographically
-        ├─ Extract last column
-        └─ Store primary_index (4 bytes header)
+  ├─ [RLE-1 Encode] (if enabled)
+  │   ├─ Compress runs of 4+ bytes
+  │   └─ Output has up to 25% overhead
+  │
+  ├─ [BWT Transform]
+  │   ├─ Create cyclic rotations
+  │   ├─ Sort lexicographically
+  │   ├─ Extract last column
+  │   └─ Store primary_index (4 bytes header)
+  │
+  ├─ [MTF Transform] (if enabled)
+  │
+  ├─ [RLE-2 Encode] (if enabled)
+  │
+  └─ [Huffman Encode] (if enabled)
     ↓
 [Reassemble Blocks]
     ↓
@@ -154,6 +189,14 @@ make all
 make windows    # Creates bzip2_stage1.exe
 ```
 
+#### Using MinGW on Windows (PowerShell or CMD):
+
+```powershell
+cd "c:\Users\immoi\Desktop\data compression project\stage1"
+mingw32-make clean
+mingw32-make all
+```
+
 #### Manual Compilation (Any Platform):
 
 ```bash
@@ -162,10 +205,13 @@ gcc -Wall -Wextra -O2 -Iinclude -c src/config.c -o src/config.o
 gcc -Wall -Wextra -O2 -Iinclude -c src/block.c -o src/block.o
 gcc -Wall -Wextra -O2 -Iinclude -c src/rle.c -o src/rle.o
 gcc -Wall -Wextra -O2 -Iinclude -c src/bwt.c -o src/bwt.o
+gcc -Wall -Wextra -O2 -Iinclude -c src/mtf.c -o src/mtf.o
+gcc -Wall -Wextra -O2 -Iinclude -c src/rle2.c -o src/rle2.o
+gcc -Wall -Wextra -O2 -Iinclude -c src/huffman.c -o src/huffman.o
 gcc -Wall -Wextra -O2 -Iinclude -c src/main.c -o src/main.o
 
 # Link into executable
-gcc -Wall -Wextra -O2 -o bzip2_stage1 src/main.o src/config.o src/block.o src/rle.o src/bwt.o
+gcc -Wall -Wextra -O2 -o bzip2_stage1 src/main.o src/config.o src/block.o src/rle.o src/bwt.o src/mtf.o src/rle2.o src/huffman.o
 ```
 
 ### Build Output
@@ -282,7 +328,7 @@ output_directory = ./results/     # Default output directory
 ### Configuration Notes
 
 - **block_size:** Automatically clamped to [100KB, 900KB] range
-- **Stage 1 only uses:** `block_size`, `rle1_enabled`, `bwt_type`
+- **Stage 1-3 use:** `block_size`, `rle1_enabled`, `mtf_enabled`, `rle2_enabled`, `huffman_enabled`
 - Missing config file → uses safe defaults
 - Inline comments (after `#`) are stripped
 
@@ -332,13 +378,18 @@ stage1/
 │   ├── config.c         # Configuration file parsing
 │   ├── block.c          # Block division and reassembly
 │   ├── rle.c            # RLE-1 encoding/decoding
-│   └── bwt.c            # BWT forward/inverse transform
+│   ├── bwt.c            # BWT forward/inverse transform
+│   ├── mtf.c            # Move-to-Front transform
+│   ├── rle2.c           # RLE-2 for zero runs
+│   └── huffman.c        # Canonical Huffman coding
 ├── include/
-│   ├── main.h           # (implied by main.c includes)
 │   ├── config.h         # Config struct and functions
 │   ├── block.h          # Block and BlockManager structs
 │   ├── rle.h            # RLE-1 function prototypes
-│   └── bwt.h            # BWT function prototypes
+│   ├── bwt.h            # BWT function prototypes
+│   ├── mtf.h            # MTF function prototypes
+│   ├── rle2.h           # RLE-2 function prototypes
+│   └── huffman.h        # Huffman function prototypes
 ├── Makefile             # Build automation (Linux/WSL)
 ├── config.ini           # Configuration file
 ├── README.md            # This file
@@ -359,26 +410,28 @@ stage1/
 
 ```
 [4 bytes: primary_index (little-endian int32)]
-[N bytes: BWT output]
+[payload: stage 2/3 output]
 
-Total: 4 + N bytes
+Total: 4 + payload bytes
 ```
 
-**Example for 57-byte input:**
+**If Huffman is enabled, payload format is:**
 
-- Primary index: 4 bytes
-- BWT output: ~57 bytes
-- Total: ~61 bytes (4 bytes overhead)
+```
+[4 bytes: decoded length]
+[256 bytes: canonical code lengths]
+[bitstream: Huffman-coded data]
+```
 
 ---
 
 ## Performance Notes
 
-### Stage 1 Compression
+### Stage 1-3 Compression
 
-- **Text files:** Modest compression (RLE-1 + BWT prepare data for later stages)
-- **Repetitive data:** Limited compression at this stage
-- **Binary data:** May not compress well until Stage 2 (MTF) and Stage 3 (Huffman)
+- **Text files:** Good compression after MTF + Huffman
+- **Repetitive data:** Good compression after RLE-2 + Huffman
+- **Binary data:** Mixed results depending on entropy
 
 **Expected ratios:**
 
@@ -396,19 +449,17 @@ Total: 4 + N bytes
 
 - **RLE-1:** O(n) linear
 - **BWT:** O(n² log n) due to lexicographic sorting
-- **BWT Inverse:** O(n) linear
+- **MTF:** O(n \* 256) linear with small constant
+- **RLE-2:** O(n) linear
+- **Huffman:** O(n log k) for tree build, O(n) for encoding
 
 ---
 
-## Next Steps: Stage 2
+## Stage Completion Status
 
-Stage 1 prepares the data through RLE-1 and BWT. Stage 2 will add:
-
-1. **Move-to-Front (MTF):** Transforms repeated characters to small numbers
-2. **RLE-2:** Specialized RLE targeting MTF output (many zeros)
-3. **Significant compression improvements** on most file types
-
-Expected compression ratio improvement: **30-50%** better after Stage 2.
+- Stage 1: Block division, RLE-1, BWT
+- Stage 2: MTF, RLE-2
+- Stage 3: Canonical Huffman coding
 
 ---
 

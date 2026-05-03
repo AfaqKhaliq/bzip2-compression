@@ -6,6 +6,9 @@
 #include "block.h"
 #include "rle.h"
 #include "bwt.h"
+#include "mtf.h"
+#include "rle2.h"
+#include "huffman.h"
 
 /* ── helpers ── */
 
@@ -17,13 +20,13 @@ static void print_usage(const char *prog)
 }
 
 /*
- * Encode a single block through the Stage-1 pipeline:
- *   Block data  →  (optional) RLE-1  →  BWT
+ * Encode a single block through the pipeline:
+ *   Block data → (optional) RLE-1 → BWT → (optional) MTF → (optional) RLE-2
+ *   → (optional) Huffman
  *
- * The encoded result is stored back into block->data.
- * We also need to store the BWT primary_index alongside the block data
- * so the decoder can invert the BWT.  We prepend it as 4 bytes (little-
- * endian int32) before the BWT output.
+ * Output format per block:
+ *   [4 bytes: primary_index (little-endian int32)]
+ *   [payload: stage2/3 output]
  */
 static int encode_block(Block *block, const Config *cfg)
 {
@@ -31,6 +34,7 @@ static int encode_block(Block *block, const Config *cfg)
     size_t         size  = block->size;
     unsigned char *tmp   = NULL;
     size_t         tmp_len = 0;
+    int            primary_index = 0;
 
     /* ── RLE-1 (optional) ── */
     if (cfg->rle1_enabled) {
@@ -49,18 +53,69 @@ static int encode_block(Block *block, const Config *cfg)
     }
 
     /* ── BWT ── */
-    /* We prepend 4 bytes for the primary_index, then the BWT output */
+    tmp = (unsigned char *)malloc(size);
+    if (!tmp) return -1;
+
+    bwt_encode(buf, size, tmp, &primary_index);
+
+    free(block->data);
+    block->data = tmp;
+    block->size = size;
+    buf  = block->data;
+    size = block->size;
+    tmp  = NULL;
+
+    /* ── MTF (optional) ── */
+    if (cfg->mtf_enabled) {
+        tmp = (unsigned char *)malloc(size);
+        if (!tmp) return -1;
+        mtf_encode(buf, size, tmp);
+
+        free(block->data);
+        block->data = tmp;
+        block->size = size;
+        buf  = block->data;
+        tmp  = NULL;
+    }
+
+    /* ── RLE-2 (optional) ── */
+    if (cfg->rle2_enabled) {
+        tmp = (unsigned char *)malloc(size * 2 + 16);
+        if (!tmp) return -1;
+        rle2_encode(buf, size, tmp, &tmp_len);
+
+        free(block->data);
+        block->data = tmp;
+        block->size = tmp_len;
+        buf  = block->data;
+        size = block->size;
+        tmp  = NULL;
+    }
+
+    /* ── Huffman (optional) ── */
+    if (cfg->huffman_enabled) {
+        size_t max_out = size * 5 + 4 + 256 + 512;
+        tmp = (unsigned char *)malloc(max_out);
+        if (!tmp) return -1;
+        huffman_encode(buf, size, tmp, &tmp_len);
+
+        free(block->data);
+        block->data = tmp;
+        block->size = tmp_len;
+        buf  = block->data;
+        size = block->size;
+        tmp  = NULL;
+    }
+
+    /* ── Prepend primary_index ── */
     tmp = (unsigned char *)malloc(size + 4);
     if (!tmp) return -1;
 
-    int primary_index = 0;
-    bwt_encode(buf, size, tmp + 4, &primary_index);
-
-    /* Store primary_index as 4 little-endian bytes */
     tmp[0] = (unsigned char)( primary_index        & 0xFF);
     tmp[1] = (unsigned char)((primary_index >>  8) & 0xFF);
     tmp[2] = (unsigned char)((primary_index >> 16) & 0xFF);
     tmp[3] = (unsigned char)((primary_index >> 24) & 0xFF);
+    if (size > 0) memcpy(tmp + 4, buf, size);
 
     free(block->data);
     block->data = tmp;
@@ -70,8 +125,9 @@ static int encode_block(Block *block, const Config *cfg)
 }
 
 /*
- * Decode a single block through the Stage-1 pipeline (inverse):
- *   BWT-decoded  →  (optional) RLE-1 decode
+ * Decode a single block through the inverse pipeline:
+ *   (optional) Huffman → (optional) RLE-2 → (optional) MTF → BWT
+ *   → (optional) RLE-1
  */
 static int decode_block(Block *block, const Config *cfg)
 {
@@ -86,18 +142,80 @@ static int decode_block(Block *block, const Config *cfg)
                                (buf[2] << 16) |
                                (buf[3] << 24) );
 
-    size_t bwt_len = size - 4;
-    unsigned char *bwt_data = buf + 4;
+    size_t payload_len = size - 4;
+    unsigned char *payload = buf + 4;
+
+    /* ── Huffman (optional) ── */
+    if (cfg->huffman_enabled) {
+        if (payload_len < 4 + 256) return -1;
+        unsigned int decoded_len = (unsigned int)( payload[0] |
+                                   (payload[1] <<  8) |
+                                   (payload[2] << 16) |
+                                   (payload[3] << 24) );
+        unsigned char *tmp = (unsigned char *)malloc(decoded_len + 16);
+        if (!tmp) return -1;
+
+        size_t decoded_out = 0;
+        huffman_decode(payload, payload_len, tmp, &decoded_out);
+
+        free(block->data);
+        block->data = tmp;
+        block->size = decoded_out;
+        buf  = block->data;
+        size = block->size;
+    } else {
+        memmove(block->data, payload, payload_len);
+        block->size = payload_len;
+        buf  = block->data;
+        size = block->size;
+    }
+
+    /* ── RLE-2 (optional) ── */
+    if (cfg->rle2_enabled) {
+        size_t decoded_max = 0;
+        for (size_t i = 0; i < size; i++) {
+            if (buf[i] == 0 && i + 1 < size) {
+                decoded_max += buf[i + 1];
+                i++;
+            } else {
+                decoded_max += 1;
+            }
+        }
+
+        unsigned char *tmp = (unsigned char *)malloc(decoded_max + 16);
+        if (!tmp) return -1;
+
+        size_t decoded_len = 0;
+        rle2_decode(buf, size, tmp, &decoded_len);
+
+        free(block->data);
+        block->data = tmp;
+        block->size = decoded_len;
+        buf  = block->data;
+        size = block->size;
+    }
+
+    /* ── MTF (optional) ── */
+    if (cfg->mtf_enabled) {
+        unsigned char *tmp = (unsigned char *)malloc(size);
+        if (!tmp) return -1;
+        mtf_decode(buf, size, tmp);
+
+        free(block->data);
+        block->data = tmp;
+        block->size = size;
+        buf  = block->data;
+    }
 
     /* ── Inverse BWT ── */
-    unsigned char *tmp = (unsigned char *)malloc(bwt_len);
+    unsigned char *tmp = (unsigned char *)malloc(size);
     if (!tmp) return -1;
-    bwt_decode(bwt_data, bwt_len, primary_index, tmp);
+    bwt_decode(buf, size, primary_index, tmp);
 
     /* Replace block data with BWT-decoded data */
     free(block->data);
     block->data = tmp;
-    block->size = bwt_len;
+    block->size = size;
 
     /* ── Inverse RLE-1 (optional) ── */
     if (cfg->rle1_enabled) {
