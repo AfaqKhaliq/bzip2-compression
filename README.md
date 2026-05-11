@@ -332,43 +332,6 @@ output_directory = ./results/     # Default output directory
 - Missing config file → uses safe defaults
 - Inline comments (after `#`) are stripped
 
----
-
-## Test Results
-
-### Test 1: Simple Text File
-
-**Input:** `"Hello World! This is a test file for BZip2 compression."`  
-**File size:** 57 bytes  
-**Result:** ✓ **PASS** - Round-trip encode/decode verified
-
-```bash
-./bzip2_stage1 encode test_input.txt test_encoded.bin config.ini
-./bzip2_stage1 decode test_encoded.bin test_decoded.txt config.ini
-# Verification: Original == Decoded ✓
-```
-
-### Test 2: Repeated Data
-
-**Input:** Pattern `"AAABBBCCCDDDEEEFFFGGGHHH"` repeated 100 times  
-**File size:** 2402 bytes  
-**Compressed size:** 2406 bytes  
-**Compression ratio:** 100.17%  
-**Result:** ✓ **PASS** - Handles non-compressible data gracefully
-
-```bash
-./bzip2_stage1 encode test_repeated.txt test_repeated.bin config.ini
-./bzip2_stage1 decode test_repeated.bin test_repeated_decoded.txt config.ini
-# Verification: Original == Decoded ✓
-```
-
-### Test 3: File Integrity
-
-**Test:** Encode and decode random binary files  
-**Result:** ✓ **PASS** - 100% byte-for-byte accuracy
-
----
-
 ## Project Structure
 
 ```
