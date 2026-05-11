@@ -12,7 +12,41 @@ This is a complete three-stage implementation of a BZip2-like compression pipeli
 
 ---
 
-## Architecture & Components
+## Benchmarking & Graph Generation
+
+Two helper Python scripts are included to run automated benchmarks and produce comparison graphs:
+
+- `run_benchmark.py` — runs compression benchmarks over all files in the `benchmarks/` folder and writes results to `results.csv`.
+  - Behavior: scans `benchmarks/` with `glob("*.*")` (non-recursive), sorts files by size, skips zero-length files, and for each file:
+    - runs your custom encoder executable (variable `EXE` at the top of the script) as `encode <input> <output>` and writes `results/<filename>.bz`;
+    - compresses the same input with Python's `bz2` (official) and writes `results/<filename>.official.bz`;
+    - records timing and size metrics and appends an entry to `results.csv` with columns: `File, Size, BlockSize, CompressionRatio, OfficialRatio, Time, OfficialTime, Memory`.
+  - Run: make sure the executable path in `run_benchmark.py` (`EXE`) points to your built `bzip2_stage1` binary (on Windows you may prefer `EXE = ".\\bzip2_stage1.exe"`), populate `benchmarks/` with test files, then:
+
+```bash
+python run_benchmark.py
+```
+
+- `generate_graphs.py` — reads `results.csv` and produces PNG comparison graphs under `results/graphs/`:
+  - `extension_comparison.png` — average compression ratio by file extension
+  - `size_time_scalability.png` — execution time vs. file size (log y-scale)
+  - `per_file_ratio.png` — per-file compression ratio comparison
+  - `throughput_comparison.png` — throughput (MB/s) comparison
+  - Dependencies: `pandas`, `matplotlib` (install with `pip install pandas matplotlib`)
+  - Run:
+
+```bash
+python generate_graphs.py
+```
+
+Notes:
+
+- `run_benchmark.py` expects `benchmarks/` and writes outputs into `results/`. The repository `.gitignore` is set up to ignore contents but keep the directories tracked (`.gitkeep` files are included).
+- If your custom encoder uses a different CLI, update `run_benchmark.py` accordingly.
+
+---
+
+## Configuration
 
 ### 1. Block Division
 
@@ -251,7 +285,6 @@ done
 
 ```
 [Config]
-  block_size       = 500000
   rle1_enabled     = true
   bwt_type         = matrix
   mtf_enabled      = true
@@ -500,30 +533,3 @@ Uses **qsort** with a custom comparator that:
 - **RLE-1 in BZip2:** Optimized to guarantee ≤125% output size
 
 ---
-
-## Testing Checklist
-
-- [x] Block division works for various file sizes
-- [x] RLE-1 encode/decode round-trip verified
-- [x] BWT encode/decode round-trip verified
-- [x] Configuration file parsing works
-- [x] Simple text files compress and decompress
-- [x] Complex patterns handled correctly
-- [x] File integrity maintained (100% accurate)
-
----
-
-## Future Enhancements (Stage 2 & 3)
-
-- Move-to-Front transform for byte frequency clustering
-- RLE-2 for MTF zero runs
-- Canonical Huffman coding for entropy encoding
-- Suffix array-based BWT (O(n log n) for larger blocks)
-- Parallel block processing
-- Performance benchmarking suite
-
----
-
-**Status:** ✓ Stage 1 Complete and Verified  
-**Last Updated:** April 22, 2026  
-**Team:** Data Compression Project
