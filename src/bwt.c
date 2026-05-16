@@ -1,4 +1,3 @@
-@@ -0,0 +1,175 @@
 #include "bwt.h"
 
 #include <stdlib.h>
@@ -172,5 +171,4 @@ void bwt_decode(unsigned char *input,  size_t len,
     }
 
     free(T);
-    free(F);
 }
