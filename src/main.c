@@ -30,12 +30,14 @@ static void print_usage(const char *prog)
  */
 static int encode_block(Block *block, const Config *cfg)
 {
+
     unsigned char *buf   = block->data;
     size_t         size  = block->size;
     unsigned char *tmp   = NULL;
     size_t         tmp_len = 0;
     int            primary_index = 0;
-
+    FILE *inter_fp = fopen("intermediate.txt", "a");
+    if (!inter_fp) { fprintf(stderr, "Warning: could not open intermediate.txt\n"); }
     /* ── RLE-1 (optional) ── */
     if (cfg->rle1_enabled) {
         /* Worst-case encoded size: every byte emits 2 bytes → 2*size */
@@ -50,6 +52,8 @@ static int encode_block(Block *block, const Config *cfg)
         buf  = block->data;
         size = block->size;
         tmp  = NULL;
+        if (inter_fp) fprintf(inter_fp, "[ENCODE] RLE-1 output: %zu bytes\n", tmp_len);
+        
     }
 
     /* ── BWT ── */
@@ -64,6 +68,7 @@ static int encode_block(Block *block, const Config *cfg)
     buf  = block->data;
     size = block->size;
     tmp  = NULL;
+    if (inter_fp) fprintf(inter_fp, "[ENCODE] BWT output: %zu bytes\n", size);
 
     /* ── MTF (optional) ── */
     if (cfg->mtf_enabled) {
@@ -76,6 +81,7 @@ static int encode_block(Block *block, const Config *cfg)
         block->size = size;
         buf  = block->data;
         tmp  = NULL;
+        if (inter_fp) fprintf(inter_fp, "[ENCODE] MTF output: %zu bytes\n", size);
     }
 
     /* ── RLE-2 (optional) ── */
@@ -90,6 +96,7 @@ static int encode_block(Block *block, const Config *cfg)
         buf  = block->data;
         size = block->size;
         tmp  = NULL;
+        if (inter_fp) fprintf(inter_fp, "[ENCODE] RLE-2 output: %zu bytes\n", tmp_len);
     }
 
     /* ── Huffman (optional) ── */
@@ -105,6 +112,7 @@ static int encode_block(Block *block, const Config *cfg)
         buf  = block->data;
         size = block->size;
         tmp  = NULL;
+        if (inter_fp) fprintf(inter_fp, "[ENCODE] Huffman output: %zu bytes\n======================================================================", tmp_len);
     }
 
     /* ── Prepend primary_index ── */
@@ -120,6 +128,9 @@ static int encode_block(Block *block, const Config *cfg)
     free(block->data);
     block->data = tmp;
     block->size = size + 4;
+
+    if (inter_fp) fclose(inter_fp);
+
 
     return 0;
 }
