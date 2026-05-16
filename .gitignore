@@ -1,2 +1,4 @@
-results/
-benchmarks/
+results/*
+!results/.gitkeep
+benchmarks/*
+!benchmarks/.gitkeep

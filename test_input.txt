@@ -1,0 +1,619 @@
+<main>
+  <app-dashboard-shell>
+    <ng-container sidebar>
+      <app-student-nav></app-student-nav>
+    </ng-container>
+
+    <h1 class="text-3xl font-semibold">{{ studentName }}'s Dashboard</h1>
+
+    <!-- Two cards grid -->
+    <div class="mt-4 grid gap-4 sm:grid-cols-2">
+      <!-- Profile Status card -->
+      <div class="rounded-lg border border-gray-300 bg-card shadow-sm">
+        <div class="px-6 py-4">
+          <h2 class="text-xl font-semibold tracking-tight">Profile Status</h2>
+        </div>
+        <div class="px-6 py-6 text-base text-gray-700">
+          Complete your profile to get better recommendations.
+
+          <div class="mt-3">
+            <a
+              routerLink="/student/profile"
+              class="inline-flex items-center justify-center rounded-lg border border-gray-300 px-5 py-2 text-base font-semibold hover:bg-gray-50 transition-colors"
+            >
+              Update Profile
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tasks card -->
+      <div class="rounded-lg border border-gray-300 bg-card shadow-sm">
+        <div class="px-6 py-4 flex items-center justify-between gap-3">
+          <h2 class="text-xl font-semibold tracking-tight">A Reminder To My Tasks</h2>
+          <span class="text-sm text-gray-500" *ngIf="tasks.length > 0">
+            {{ remainingTasks }} remaining
+          </span>
+        </div>
+        <div class="px-6 py-6 text-base text-gray-700">
+          <div class="flex flex-wrap gap-2">
+            <input
+              type="text"
+              [(ngModel)]="newTask"
+              (keyup.enter)="addTask()"
+              placeholder="Add a task"
+              class="flex-1 min-w-[220px] rounded-lg border border-gray-300 px-3 py-2 text-base"
+            />
+            <button
+              type="button"
+              (click)="addTask()"
+              class="rounded-lg border border-gray-300 px-4 py-2 text-base font-semibold hover:bg-gray-50 transition-colors"
+            >
+              Add
+            </button>
+          </div>
+
+          <div class="mt-4" *ngIf="tasks.length > 0; else emptyTasks">
+            <div
+              class="flex items-center justify-between gap-3 py-2 border-b border-gray-200"
+              *ngFor="let task of tasks"
+            >
+              <label class="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  [checked]="task.done"
+                  (change)="toggleTask(task.id)"
+                  class="h-4 w-4"
+                />
+                <span [class.line-through]="task.done" [class.text-gray-400]="task.done">
+                  {{ task.text }}
+                </span>
+              </label>
+              <button
+                type="button"
+                (click)="removeTask(task.id)"
+                class="text-sm font-semibold text-red-600 hover:text-red-700"
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+
+          <ng-template #emptyTasks>
+            <p class="mt-4 text-sm text-gray-500">No tasks yet. Add your first one above.</p>
+          </ng-template>
+        </div>
+      </div>
+    </div>
+  </app-dashboard-shell>
+</main>
+import { Component } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
+import { RouterModule } from '@angular/router';
+import { DashboardShellComponent } from '../../../components/dashboard/dashboard-shell.component';
+import { StudentNavComponent } from '../../../components/dashboard/student-nav.component';
+
+interface TaskItem {
+  id: string;
+  text: string;
+  done: boolean;
+}
+
+@Component({
+  selector: 'app-student-dashboard-page',
+  standalone: true,
+  imports: [CommonModule, RouterModule, FormsModule, DashboardShellComponent, StudentNavComponent],
+  templateUrl: './student-dashboard.component.html',
+})
+export class StudentDashboardPageComponent {
+  studentName = 'Student';
+  tasks: TaskItem[] = [];
+  newTask = '';
+  private readonly storageKey = 'student-dashboard-tasks';
+
+  constructor() {
+    const rawSession = localStorage.getItem('userSession');
+
+    if (!rawSession) {
+      return;
+    }
+
+    try {
+      const session = JSON.parse(rawSession) as { name?: string };
+
+      if (session?.name?.trim()) {
+        this.studentName = session.name.trim();
+      }
+    } catch {
+      // Keep default name if session JSON is invalid.
+    }
+
+    this.loadTasks();
+  }
+
+  addTask(): void {
+    const text = this.newTask.trim();
+    if (!text) {
+      return;
+    }
+
+    const id =
+      typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+    this.tasks = [{ id, text, done: false }, ...this.tasks];
+    this.newTask = '';
+    this.saveTasks();
+  }
+
+  get remainingTasks(): number {
+    return this.tasks.filter((task) => !task.done).length;
+  }
+
+  toggleTask(taskId: string): void {
+    this.tasks = this.tasks.map((task) =>
+      task.id === taskId ? { ...task, done: !task.done } : task,
+    );
+    this.saveTasks();
+  }
+
+  removeTask(taskId: string): void {
+    this.tasks = this.tasks.filter((task) => task.id !== taskId);
+    this.saveTasks();
+  }
+
+  private loadTasks(): void {
+    if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+      return;
+    }
+
+    try {
+      const raw = localStorage.getItem(this.storageKey);
+      if (!raw) {
+        return;
+      }
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        this.tasks = parsed.filter(
+          (item): item is TaskItem =>
+            typeof item?.id === 'string' && typeof item?.text === 'string',
+        );
+      }
+    } catch {
+      // Ignore invalid localStorage data.
+    }
+  }
+
+  private saveTasks(): void {
+    if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+      return;
+    }
+
+    try {
+      localStorage.setItem(this.storageKey, JSON.stringify(this.tasks));
+    } catch {
+      // Ignore storage write errors.
+    }
+  }
+}
+<main>
+  <app-dashboard-shell>
+    <ng-container sidebar>
+      <app-counselor-nav></app-counselor-nav>
+    </ng-container>
+
+    <h1 class="text-3xl font-semibold">Counselor Dashboard</h1>
+
+    <!-- METRIC CARDS -->
+    <div class="mt-4 grid gap-4 sm:grid-cols-4">
+      <button (click)="toggleSection('manage')" class="w-full">
+        <div
+          class="text-left rounded-lg border border-gray-300 bg-card shadow-sm hover:shadow-md transition-shadow"
+        >
+          <div class="px-6 py-4">
+            <h3 class="text-xl font-semibold tracking-tight">Manage Students</h3>
+          </div>
+          <div class="px-6 py-6 text-3xl font-semibold">
+            <span *ngIf="managingStudentsLoading" class="inline-block animate-spin">
+              <svg
+                class="w-8 h-8 text-blue-600"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                />
+              </svg>
+            </span>
+            <span *ngIf="!managingStudentsLoading">{{ managingStudentsCount }}</span>
+          </div>
+        </div>
+      </button>
+    </div>
+
+    <div class="mt-4">
+      <!-- MANAGE STUDENTS -->
+      <ng-container *ngIf="(section$ | async) === 'manage'">
+        <app-manage-students
+          (studentsLoaded)="onStudentsLoaded($event)"
+          (loadingStateChanged)="onStudentsLoading($event)"
+        ></app-manage-students>
+      </ng-container>
+    </div>
+  </app-dashboard-shell>
+</main>
+import { Component } from '@angular/core';
+import { DashboardShellComponent } from '../../../components/dashboard/dashboard-shell.component';
+import { BehaviorSubject } from 'rxjs';
+import { CounselorNavComponent } from '../../../components/dashboard/counselor-nav.component';
+import { RouterModule } from '@angular/router';
+import { CommonModule } from '@angular/common';
+import { ManageStudentsComponent } from './manage-students.component';
+
+type Section = 'none' | 'active' | 'reviews' | 'messages' | 'manage';
+
+@Component({
+  selector: 'app-counselor-dashboard',
+  templateUrl: './counselor-dashboard.component.html',
+  imports: [
+    DashboardShellComponent,
+    CounselorNavComponent,
+    RouterModule,
+    CommonModule,
+    ManageStudentsComponent,
+  ],
+})
+export class CounselorDashboardPageComponent {
+  managingStudentsCount = 0;
+  managingStudentsLoading = true;
+
+  private sectionSubject = new BehaviorSubject<Section>('manage');
+  section$ = this.sectionSubject.asObservable();
+
+  toggleSection(sec: Section) {
+    const current = this.sectionSubject.value;
+    this.sectionSubject.next(current === sec ? 'none' : sec);
+  }
+
+  onStudentsLoaded(count: number) {
+    this.managingStudentsCount = count;
+    this.managingStudentsLoading = false;
+  }
+
+  onStudentsLoading(isLoading: boolean) {
+    this.managingStudentsLoading = isLoading;
+  }
+}
+import { Component, OnInit, ChangeDetectorRef, Output, EventEmitter } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { Router } from '@angular/router';
+import { ShareBlocksService, ShareResponseDTO } from '../../../services/share-blocks.service';
+import { UserService, UserData } from '../../../services/user.service';
+
+interface StudentShare {
+  id: number;
+  studentId: number;
+  student: UserData | null;
+  contentBlockId: number;
+  permissionLevel: number;
+  createdAt: string;
+  expiresAt: string;
+}
+
+interface StudentProfile {
+  studentId: number;
+  student: UserData | null;
+  contentBlockIds: number[];
+  permissionLevels: number[];
+  shares: StudentShare[];
+}
+
+@Component({
+  selector: 'app-manage-students',
+  standalone: true,
+  imports: [CommonModule],
+  template: `
+    <div class="bg-white rounded-lg shadow">
+      <!-- Header -->
+      <div class="px-6 py-4 border-b border-gray-200">
+        <h3 class="text-lg font-semibold text-gray-900">Manage Students</h3>
+        <p class="text-sm text-gray-600 mt-1">Students who have shared their profiles</p>
+      </div>
+
+      <!-- Loading State -->
+      <div *ngIf="loading" class="px-6 py-8 text-center">
+        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+        <p class="text-gray-600 text-sm mt-3">Loading students...</p>
+      </div>
+
+      <!-- Empty State -->
+      <div *ngIf="!loading && studentShares.length === 0" class="px-6 py-12 text-center">
+        <svg
+          class="w-12 h-12 mx-auto text-gray-300 mb-3"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M12 4.354a4 4 0 110 5.292M15 20H9a6 6 0 01-6-6V9a6 6 0 016-6h6a6 6 0 016 6v5a6 6 0 01-6 6z"
+          />
+        </svg>
+        <p class="text-gray-500">No students have shared their profiles yet</p>
+      </div>
+
+      <!-- Students List -->
+      <div *ngIf="!loading && studentShares.length > 0" class="divide-y divide-gray-200">
+        <div
+          *ngFor="let profile of studentShares"
+          class="px-6 py-4 hover:bg-gray-50 transition-colors flex items-center justify-between"
+        >
+          <div class="flex items-center gap-4 flex-1 min-w-0">
+            <!-- Avatar -->
+            <div
+              class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0"
+            >
+              <span class="text-sm font-medium text-blue-700">
+                {{ profile.student?.firstName?.charAt(0) || '?'
+                }}{{ profile.student?.lastName?.charAt(0) || '' }}
+              </span>
+            </div>
+
+            <!-- Student Details -->
+            <div class="flex-1 min-w-0">
+              <p class="font-medium text-gray-900">
+                {{ profile.student?.firstName }} {{ profile.student?.lastName }}
+              </p>
+              <p class="text-sm text-gray-600 truncate">{{ profile.student?.email }}</p>
+              <p class="text-xs text-gray-500 mt-1">
+                {{ profile.contentBlockIds.length }} shared block{{
+                  profile.contentBlockIds.length === 1 ? '' : 's'
+                }}
+              </p>
+            </div>
+          </div>
+
+          <!-- Permission Badge -->
+          <div class="flex items-center gap-3">
+            <span
+              class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
+              [ngClass]="getPermissionBadgeClass(profile)"
+            >
+              {{ getPermissionSummary(profile) }}
+            </span>
+
+            <!-- View Profile Button -->
+            <button
+              (click)="viewStudentProfile(profile)"
+              class="px-3 py-1 text-sm font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors"
+            >
+              View Profile
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Error State -->
+      <div *ngIf="!loading && error" class="px-6 py-8 text-center">
+        <p class="text-red-600 text-sm">{{ error }}</p>
+        <button
+          (click)="loadStudents()"
+          class="mt-3 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700 transition-colors"
+        >
+          Retry
+        </button>
+      </div>
+    </div>
+  `,
+  styles: [
+    `
+      :host {
+        display: block;
+      }
+    `,
+  ],
+})
+export class ManageStudentsComponent implements OnInit {
+  studentShares: StudentProfile[] = [];
+  loading = false;
+  error: string | null = null;
+
+  @Output() studentsLoaded = new EventEmitter<number>();
+  @Output() loadingStateChanged = new EventEmitter<boolean>();
+
+  constructor(
+    private shareBlocksService: ShareBlocksService,
+    private userService: UserService,
+    private router: Router,
+    private cdr: ChangeDetectorRef,
+  ) {}
+
+  ngOnInit() {
+    this.loadStudents();
+  }
+
+  loadStudents() {
+    this.loading = true;
+    this.loadingStateChanged.emit(true);
+    this.error = null;
+    this.studentShares = [];
+
+    this.shareBlocksService.getSharedStudents().subscribe({
+      next: (response) => {
+        if (response.succeeded) {
+          const shares = response.data;
+
+          // Group shares by studentId so all block IDs stay together for each student
+          const sharesByStudentId = new Map<number, ShareResponseDTO[]>();
+          shares.forEach((share) => {
+            const existingShares = sharesByStudentId.get(share.sharedByUserId) ?? [];
+            existingShares.push(share);
+            sharesByStudentId.set(share.sharedByUserId, existingShares);
+          });
+
+          const uniqueStudentIds = Array.from(sharesByStudentId.keys());
+
+          // Fetch user details for each unique student
+          let completedFetches = 0;
+          const totalFetches = uniqueStudentIds.length;
+
+          if (totalFetches === 0) {
+            this.loading = false;
+            this.loadingStateChanged.emit(false);
+            this.studentsLoaded.emit(0);
+            this.cdr.detectChanges();
+            return;
+          }
+
+          const studentShareMap = new Map<number, StudentProfile>();
+
+          uniqueStudentIds.forEach((studentId) => {
+            this.userService.getUserById(studentId).subscribe({
+              next: (userResponse) => {
+                if (userResponse.succeeded && userResponse.data.length > 0) {
+                  const student = userResponse.data[0];
+                  const studentSharesForStudent = sharesByStudentId.get(studentId) ?? [];
+
+                  studentShareMap.set(studentId, {
+                    studentId,
+                    student,
+                    contentBlockIds: studentSharesForStudent.map((share) => share.contentBlockId),
+                    permissionLevels: studentSharesForStudent.map((share) => share.permissionLevel),
+                    shares: studentSharesForStudent.map((share) => ({
+                      id: share.id,
+                      studentId,
+                      student,
+                      contentBlockId: share.contentBlockId,
+                      permissionLevel: share.permissionLevel,
+                      createdAt: share.createdAt,
+                      expiresAt: share.expiresAt,
+                    })),
+                  });
+                }
+
+                completedFetches++;
+                if (completedFetches === totalFetches) {
+                  this.studentShares = Array.from(studentShareMap.values());
+                  this.loading = false;
+                  this.loadingStateChanged.emit(false);
+                  this.studentsLoaded.emit(this.studentShares.length);
+                  this.cdr.detectChanges();
+                }
+              },
+              error: (err) => {
+                console.error(`Error fetching user details for student ${studentId}:`, err);
+                completedFetches++;
+                if (completedFetches === totalFetches) {
+                  this.studentShares = Array.from(studentShareMap.values());
+                  this.loading = false;
+                  this.loadingStateChanged.emit(false);
+                  this.studentsLoaded.emit(this.studentShares.length);
+                  this.cdr.detectChanges();
+                }
+              },
+            });
+          });
+        } else {
+          this.loading = false;
+          this.loadingStateChanged.emit(false);
+          this.studentsLoaded.emit(0);
+          this.cdr.detectChanges();
+        }
+      },
+      error: (err) => {
+        console.error('Error fetching shared students:', err);
+        this.error = 'Failed to load shared students. Please try again.';
+        this.loading = false;
+        this.loadingStateChanged.emit(false);
+        this.studentsLoaded.emit(0);
+        this.cdr.detectChanges();
+      },
+    });
+  }
+
+  viewStudentProfile(studentProfile: StudentProfile) {
+    if (!studentProfile.student) {
+      alert('Student information not available');
+      return;
+    }
+
+    const sharesForStudent = studentProfile.shares;
+
+    // Keep every shared content block ID for this student
+    const contentBlockIds = studentProfile.contentBlockIds.join(',');
+
+    const permissionMap = sharesForStudent.reduce(
+      (acc, share) => {
+        acc[share.contentBlockId] = share.permissionLevel;
+        return acc;
+      },
+      {} as Record<number, number>,
+    );
+
+    const studentName = `${studentProfile.student.firstName} ${studentProfile.student.lastName}`;
+
+    console.log('🔍 Navigating to student profile:', {
+      studentId: studentProfile.studentId,
+      studentName,
+      contentBlockIds,
+      permissionMap,
+    });
+
+    this.router.navigate(['/counselor/view-student'], {
+      queryParams: {
+        studentId: studentProfile.studentId,
+        studentName,
+        contentBlockIds,
+        permissionMap: JSON.stringify(permissionMap),
+      },
+    });
+  }
+
+  getPermissionSummary(studentProfile: StudentProfile): string {
+    const labels = Array.from(
+      new Set(studentProfile.permissionLevels.map((level) => this.getPermissionLabel(level))),
+    );
+
+    return labels.length > 0 ? labels.join(' / ') : 'No permission';
+  }
+
+  getPermissionBadgeClass(studentProfile: StudentProfile): string {
+    const uniquePermissionLevels = Array.from(new Set(studentProfile.permissionLevels));
+
+    if (uniquePermissionLevels.length === 1) {
+      switch (uniquePermissionLevels[0]) {
+        case 1:
+          return 'bg-blue-100 text-blue-800';
+        case 2:
+          return 'bg-yellow-100 text-yellow-800';
+        case 3:
+          return 'bg-green-100 text-green-800';
+        default:
+          return 'bg-gray-100 text-gray-800';
+      }
+    }
+
+    return 'bg-slate-100 text-slate-800';
+  }
+
+  private getPermissionLabel(permissionLevel: number): string {
+    switch (permissionLevel) {
+      case 1:
+        return 'View';
+      case 2:
+        return 'Comment';
+      case 3:
+        return 'Edit';
+      default:
+        return 'Unknown';
+    }
+  }
+}

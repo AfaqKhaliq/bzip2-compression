@@ -172,5 +172,4 @@ void bwt_decode(unsigned char *input,  size_t len,
     }
 
     free(T);
-    free(F);
 }
