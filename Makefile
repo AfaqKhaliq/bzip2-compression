@@ -28,8 +28,6 @@ windows:
 
 # ── Utility targets ─────────────────────────────────────────────────────
 clean:
-	if exist $(SRCDIR)\*.o del /q $(SRCDIR)\*.o
-	if exist $(TARGET) del /q $(TARGET)
-	if exist $(TARGET).exe del /q $(TARGET).exe
+	rm -f $(SRCDIR)/*.o $(TARGET) $(TARGET).exe
 
 .PHONY: all windows clean
