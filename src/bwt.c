@@ -1,4 +1,3 @@
-@@ -0,0 +1,175 @@
 #include "bwt.h"
 
 #include <stdlib.h>
